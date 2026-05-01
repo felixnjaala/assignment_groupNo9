@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query } from '@nestjs/common';
 import { WeatherService } from './weather.service';
 import { CreateWeatherDto } from './dto/create-weather.dto';
 
@@ -12,7 +12,7 @@ export class WeatherController {
   }
 
   @Get()
-  findAll() {
-    return this.weatherService.findAll();
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.weatherService.findAll(Number(page), Number(limit));
   }
 }
