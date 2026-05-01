@@ -1,1 +1,4 @@
-export class CreateWeatherDto {}
+export class CreateWeatherDto {
+    city: string;
+  }
+  
