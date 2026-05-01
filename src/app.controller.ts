@@ -1,5 +1,17 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { AppService } from './app.service';
+
+interface PipelineRequestBody {
+  city: string;
+  countryName: string;
+  region: string;
+  weatherPage?: number;
+  weatherLimit?: number;
+  countryPage?: number;
+  countryLimit?: number;
+  regionPage?: number;
+  regionLimit?: number;
+}
 
 @Controller()
 export class AppController {
@@ -8,5 +20,10 @@ export class AppController {
   @Get()
   getHello(): string {
     return this.appService.getHello();
+  }
+
+  @Post('pipeline/run')
+  runPipeline(@Body() body: PipelineRequestBody) {
+    return this.appService.runPipeline(body);
   }
 }
