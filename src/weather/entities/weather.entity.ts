@@ -13,4 +13,10 @@ export class Weather {
 
   @Column()
   description: string;
+
+  @Column({ default: 'current' })
+  source: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  observedAt: Date | null;
 }
