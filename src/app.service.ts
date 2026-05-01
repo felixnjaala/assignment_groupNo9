@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { WeatherService } from './weather/weather.service';
 import { CountryService } from './country/country.service';
 
@@ -15,11 +15,25 @@ export interface PipelineInput {
 }
 
 @Injectable()
-export class AppService {
+export class AppService implements OnModuleInit {
   constructor(
     private readonly weatherService: WeatherService,
     private readonly countryService: CountryService,
   ) {}
+
+  async onModuleInit() {
+    console.log('🚀 Application started - Running pipeline with hardcoded data...');
+    try {
+      const result = await this.runPipeline({
+        city: 'London',
+        countryName: 'United Kingdom',
+        region: 'Europe',
+      });
+      console.log('✅ Pipeline completed on startup:', result);
+    } catch (error) {
+      console.error('❌ Pipeline failed on startup:', error);
+    }
+  }
 
   getHello(): string {
     return 'Hello World!';
