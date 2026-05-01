@@ -9,5 +9,6 @@ import { Weather } from './entities/weather.entity';
   imports: [HttpModule, TypeOrmModule.forFeature([Weather])],
   controllers: [WeatherController],
   providers: [WeatherService],
+  exports: [WeatherService],
 })
 export class WeatherModule {}
