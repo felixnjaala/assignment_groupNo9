@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Query } from '@nestjs/common';
 import { CountryService } from './country.service';
 import { CreateCountryDto } from './dto/create-country.dto';
 
@@ -12,7 +12,16 @@ export class CountryController {
   }
 
   @Get()
-  findAll() {
-    return this.countryService.findAll();
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.countryService.findAll(Number(page), Number(limit));
+  }
+
+  @Get('region/:region')
+  listByRegion(
+    @Param('region') region: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.countryService.listByRegion(region, Number(page), Number(limit));
   }
 }
