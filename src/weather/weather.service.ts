@@ -9,6 +9,7 @@ import { firstValueFrom } from 'rxjs';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AxiosError } from 'axios';
+import { ConfigService } from '@nestjs/config';
 import { Weather } from './entities/weather.entity';
 import { CreateWeatherDto } from './dto/create-weather.dto';
 
@@ -24,24 +25,35 @@ interface OpenWeatherForecast {
 
 @Injectable()
 export class WeatherService {
-  private readonly apiKey = process.env.OPENWEATHER_API_KEY ?? '';
   private readonly maxRetries = 3;
   private readonly requestTimeoutMs = 7000;
 
   constructor(
     private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
     @InjectRepository(Weather)
     private readonly weatherRepo: Repository<Weather>,
   ) { }
 
+  private get apiKey(): string {
+    return this.configService.get<string>('OPENWEATHER_API_KEY')?.trim() ?? '';
+  }
+
   async fetchWeather(dto: CreateWeatherDto) {
-    if (!this.apiKey) {
-      throw new InternalServerErrorException('OPENWEATHER_API_KEY is missing in .env');
+    const apiKey = this.apiKey;
+    if (!apiKey) {
+      console.error('OPENWEATHER_API_KEY is missing in .env or not loaded by ConfigModule');
+      return {
+        savedCurrent: null,
+        savedForecastCount: 0,
+        forecastPreview: [],
+        warning: 'OPENWEATHER_API_KEY is missing in .env or not loaded by ConfigModule. Weather fetch was skipped.',
+      };
     }
 
     try {
-      const currentWeatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${dto.city}&appid=${this.apiKey}&units=metric`;
-      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${dto.city}&appid=${this.apiKey}&units=metric`;
+      const currentWeatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${dto.city}&appid=${apiKey}&units=metric`;
+      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${dto.city}&appid=${apiKey}&units=metric`;
 
       const [currentData, forecastData] = await Promise.all([
         this.getWithRetry<OpenWeatherCurrent>(currentWeatherUrl, 'current weather'),
