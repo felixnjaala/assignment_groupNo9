@@ -22,22 +22,20 @@ export class AppService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    console.log('🚀 Application started - Running pipeline with hardcoded data...');
+    console.log('Application started - Running pipeline ');
+    console.log('OPENWEATHER_API_KEY loaded from process.env:', !!process.env.OPENWEATHER_API_KEY);
     try {
       const result = await this.runPipeline({
         city: 'London',
         countryName: 'United Kingdom',
         region: 'Europe',
       });
-      console.log('✅ Pipeline completed on startup:', result);
+      console.log('Pipeline completed on startup:', result);
     } catch (error) {
-      console.error('❌ Pipeline failed on startup:', error);
+      console.error('Pipeline failed on startup:', error);
     }
   }
 
-  getHello(): string {
-    return 'Hello World!';
-  }
 
   async runPipeline(input: PipelineInput) {
     const weatherResult = await this.weatherService.fetchWeather({ city: input.city });
