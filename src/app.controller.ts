@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { AppService } from './app.service';
 
 interface PipelineRequestBody {
@@ -17,13 +17,12 @@ interface PipelineRequestBody {
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
-  }
-
   @Post('pipeline/run')
   runPipeline(@Body() body: PipelineRequestBody) {
-    return this.appService.runPipeline(body);
+    const { city, countryName, region } = body;
+
+    return this.appService.runPipeline([
+      { city, country: countryName, region },
+    ]);
   }
 }
