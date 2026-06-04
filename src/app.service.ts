@@ -1,17 +1,21 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { WeatherService } from './weather/weather.service';
 import { CountryService } from './country/country.service';
 
-export interface PipelineInput {
+export interface PipelineCity {
   city: string;
-  countryName: string;
+  country: string;
   region: string;
-  weatherPage?: number;
-  weatherLimit?: number;
-  countryPage?: number;
-  countryLimit?: number;
-  regionPage?: number;
-  regionLimit?: number;
+}
+
+export interface PipelineResultItem {
+  city: string;
+  country: string;
+  region: string;
+  weather: Awaited<ReturnType<WeatherService['fetchWeather']>>;
+  countryData: Awaited<ReturnType<CountryService['fetchCountry']>>;
+  regionData: Awaited<ReturnType<CountryService['listByRegion']>>;
 }
 
 @Injectable()
@@ -19,52 +23,87 @@ export class AppService implements OnModuleInit {
   constructor(
     private readonly weatherService: WeatherService,
     private readonly countryService: CountryService,
+    private readonly configService: ConfigService,
   ) {}
 
   async onModuleInit() {
-    console.log('Application started - Running pipeline ');
-    console.log('OPENWEATHER_API_KEY loaded from process.env:', !!process.env.OPENWEATHER_API_KEY);
+    console.log('🚀 Pipeline starting...');
+
     try {
-      const result = await this.runPipeline({
-        city: 'London',
-        countryName: 'United Kingdom',
-        region: 'Europe',
-      });
-      console.log('Pipeline completed on startup:', result);
-    } catch (error) {
-      console.error('Pipeline failed on startup:', error);
+      const cities = this.getAllAvailableCities();
+
+      const result = await this.runPipeline(cities);
+
+      console.log('✅ Pipeline completed successfully');
+      console.log(result);
+    } catch (err) {
+      console.error('❌ Pipeline failed:', err);
     }
   }
 
+  private getAllAvailableCities(): PipelineCity[] {
+    return [
+    
+      { city: 'Dar es Salaam', country: 'Tanzania', region: 'Africa' },
+      { city: 'Dodoma', country: 'Tanzania', region: 'Africa' },
+      { city: 'Arusha', country: 'Tanzania', region: 'Africa' },
+      { city: 'Mwanza', country: 'Tanzania', region: 'Africa' },
+      { city: 'Mbeya', country: 'Tanzania', region: 'Africa' },
 
-  async runPipeline(input: PipelineInput) {
-    const weatherResult = await this.weatherService.fetchWeather({ city: input.city });
-    const countryResult = await this.countryService.fetchCountry({ name: input.countryName });
-    const regionResult = await this.countryService.listByRegion(
-      input.region,
-      input.regionPage ?? 1,
-      input.regionLimit ?? 25,
-    );
+      { city: 'Nairobi', country: 'Kenya', region: 'Africa' },
+      { city: 'Mombasa', country: 'Kenya', region: 'Africa' },
+      { city: 'Kisumu', country: 'Kenya', region: 'Africa' },
+      { city: 'Nakuru', country: 'Kenya', region: 'Africa' },
 
-    const weatherStored = await this.weatherService.findAll(
-      input.weatherPage ?? 1,
-      input.weatherLimit ?? 10,
-    );
-    const countryStored = await this.countryService.findAll(
-      input.countryPage ?? 1,
-      input.countryLimit ?? 10,
-    );
+      { city: 'Kampala', country: 'Uganda', region: 'Africa' },
+      { city: 'Entebbe', country: 'Uganda', region: 'Africa' },
+      { city: 'Gulu', country: 'Uganda', region: 'Africa' },
+
+     
+      { city: 'Lagos', country: 'Nigeria', region: 'Africa' },
+      { city: 'Accra', country: 'Ghana', region: 'Africa' },
+      { city: 'Cairo', country: 'Egypt', region: 'Africa' },
+      { city: 'Cape Town', country: 'South Africa', region: 'Africa' },
+    ];
+  }
+
+ 
+  async runPipeline(cities: PipelineCity[]) {
+    const results: PipelineResultItem[] = [];
+
+    for (const c of cities) {
+      try {
+        const weather = await this.weatherService.fetchWeather({
+          city: c.city,
+        });
+
+        const country = await this.countryService.fetchCountry({
+          name: c.country,
+        });
+
+        const region = await this.countryService.listByRegion(
+          c.region,
+          1,
+          50,
+        );
+
+        results.push({
+          city: c.city,
+          country: c.country,
+          region: c.region,
+          weather,
+          countryData: country,
+          regionData: region,
+        });
+      } catch (err) {
+        console.error(`⚠️ Failed for ${c.city}:`, err.message);
+      }
+    }
 
     return {
-      message: 'Pipeline completed: fetched from external APIs and persisted to PostgreSQL.',
-      input,
-      weatherApi: weatherResult,
-      countryApi: countryResult,
-      regionApi: regionResult,
-      storedSnapshot: {
-        weather: weatherStored.meta,
-        country: countryStored.meta,
-      },
+      message: 'Africa cities weather pipeline completed',
+      totalCities: cities.length,
+      results,
     };
   }
 }
