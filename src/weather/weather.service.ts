@@ -1,15 +1,14 @@
 import {
   BadGatewayException,
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AxiosError } from 'axios';
 import { ConfigService } from '@nestjs/config';
+import { AxiosError } from 'axios';
 import { Weather } from './entities/weather.entity';
 import { CreateWeatherDto } from './dto/create-weather.dto';
 
@@ -20,13 +19,17 @@ interface OpenWeatherCurrent {
 }
 
 interface OpenWeatherForecast {
-  list: Array<{ dt_txt: string; main: { temp: number }; weather: Array<{ description: string }> }>;
+  list: Array<{
+    dt_txt: string;
+    main: { temp: number };
+    weather: Array<{ description: string }>;
+  }>;
 }
 
 @Injectable()
 export class WeatherService {
   private readonly maxRetries = 3;
-  private readonly requestTimeoutMs = 7000;
+  private readonly timeout = 7000;
 
   constructor(
     private readonly httpService: HttpService,
@@ -39,110 +42,122 @@ export class WeatherService {
     return this.configService.get<string>('OPENWEATHER_API_KEY')?.trim() ?? '';
   }
 
+
   async fetchWeather(dto: CreateWeatherDto) {
     const apiKey = this.apiKey;
+
     if (!apiKey) {
-      console.error('OPENWEATHER_API_KEY is missing in .env or not loaded by ConfigModule');
       return {
-        savedCurrent: null,
-        savedForecastCount: 0,
-        forecastPreview: [],
-        warning: 'OPENWEATHER_API_KEY is missing in .env or not loaded by ConfigModule. Weather fetch was skipped.',
+        skipped: true,
+        reason: 'Missing API key',
       };
     }
 
     try {
-      const currentWeatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${dto.city}&appid=${apiKey}&units=metric`;
-      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${dto.city}&appid=${apiKey}&units=metric`;
+      const base = 'https://api.openweathermap.org/data/2.5';
 
-      const [currentData, forecastData] = await Promise.all([
-        this.getWithRetry<OpenWeatherCurrent>(currentWeatherUrl, 'current weather'),
-        this.getWithRetry<OpenWeatherForecast>(forecastUrl, 'weather forecast'),
+      const currentUrl =
+        `${base}/weather?q=${dto.city}&appid=${apiKey}&units=metric`;
+
+      const forecastUrl =
+        `${base}/forecast?q=${dto.city}&appid=${apiKey}&units=metric`;
+
+      const [current, forecast] = await Promise.all([
+        this.requestWithRetry<OpenWeatherCurrent>(currentUrl, 'current'),
+        this.requestWithRetry<OpenWeatherForecast>(forecastUrl, 'forecast'),
       ]);
 
-      const currentWeather = this.weatherRepo.create({
+
+      const currentEntity = this.weatherRepo.create({
         city: dto.city,
-        temperature: currentData.main.temp,
-        description: currentData.weather[0]?.description ?? 'No description',
+        temperature: current.main.temp,
+        description: current.weather[0]?.description ?? 'N/A',
         source: 'current',
-        observedAt: currentData.dt ? new Date(currentData.dt * 1000) : null,
+        observedAt: current.dt
+          ? new Date(current.dt * 1000)
+          : new Date(),
       });
 
-      const forecastRecords = forecastData.list.map((item) =>
+
+      const forecastEntities = forecast.list.map((item) =>
         this.weatherRepo.create({
           city: dto.city,
           temperature: item.main.temp,
-          description: item.weather[0]?.description ?? 'No description',
+          description: item.weather[0]?.description ?? 'N/A',
           source: 'forecast',
-          observedAt: new Date(item.dt_txt),
+          observedAt: new Date(item.dt_txt.replace(' ', 'T')),
         }),
       );
 
-      const savedWeather = await this.weatherRepo.save([currentWeather, ...forecastRecords]);
+      const saved = await this.weatherRepo.save([
+        currentEntity,
+        ...forecastEntities,
+      ]);
+
       return {
-        savedCurrent: savedWeather[0],
-        savedForecastCount: savedWeather.length - 1,
-        forecastPreview: forecastData.list.slice(0, 5).map((item) => ({
-          datetime: item.dt_txt,
-          temperature: item.main.temp,
-          description: item.weather[0]?.description ?? 'No description',
-        })),
+        city: dto.city,
+        current: saved[0],
+        forecastCount: saved.length - 1,
       };
-    } catch (error: unknown) {
-      if (error instanceof NotFoundException || error instanceof BadGatewayException) {
-        throw error;
-      }
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new BadGatewayException(`Weather API failed: ${message}`);
+    } catch (err) {
+      const error = err as AxiosError;
+
+      throw new BadGatewayException(
+        `Weather API failed for ${dto.city}: ${error.message}`,
+      );
     }
   }
 
+
   async findAll(page = 1, limit = 10) {
-    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 100) : 10;
     const [data, total] = await this.weatherRepo.findAndCount({
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
+      skip: (page - 1) * limit,
+      take: limit,
       order: { id: 'DESC' },
     });
 
     return {
       data,
       meta: {
-        page: safePage,
-        limit: safeLimit,
+        page,
+        limit,
         total,
-        totalPages: Math.ceil(total / safeLimit),
+        totalPages: Math.ceil(total / limit),
       },
     };
   }
 
-  private async getWithRetry<T>(url: string, label: string): Promise<T> {
+  
+  private async requestWithRetry<T>(
+    url: string,
+    label: string,
+  ): Promise<T> {
     let attempt = 0;
+
     while (attempt < this.maxRetries) {
       try {
-        const response = await firstValueFrom(
-          this.httpService.get<T>(url, { timeout: this.requestTimeoutMs }),
+        const res = await firstValueFrom(
+          this.httpService.get<T>(url, { timeout: this.timeout }),
         );
-        return response.data;
-      } catch (error: unknown) {
-        attempt += 1;
-        const axiosError = error as AxiosError;
-        const status = axiosError.response?.status;
+
+        return res.data;
+      } catch (err) {
+        attempt++;
+
+        const error = err as AxiosError;
+        const status = error.response?.status;
 
         if (status === 404) {
-          throw new NotFoundException(`No data found for ${label}`);
+          throw new NotFoundException(`${label} not found`);
         }
 
         if (attempt >= this.maxRetries) {
-          const message = axiosError.message || `Unknown ${label} API error`;
           throw new BadGatewayException(
-            `Failed to fetch ${label} after ${this.maxRetries} attempts: ${message}`,
+            `Failed ${label} after ${this.maxRetries} retries`,
           );
         }
 
-        const backoffMs = 300 * attempt;
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        await new Promise((r) => setTimeout(r, 300 * attempt));
       }
     }
 
